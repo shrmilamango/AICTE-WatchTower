@@ -1,6 +1,6 @@
 # AICTE WATCHTOWER 🛡️
 > **Automation and Monitoring of AICTE Approval Workflows**  
-> Complete build specification implemented according to *AICTE WATCHTOWER — Complete Build Documentation*.
+> Complete build specification implemented according to *AICTE WATCHTOWER*.
 
 ---
 
