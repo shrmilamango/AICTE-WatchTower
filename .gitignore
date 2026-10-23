@@ -1,0 +1,103 @@
+# ==============================================================================
+# AICTE WATCHTOWER — Git Ignore Rules
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environment Variables, Secrets & Credentials (NEVER COMMIT)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+secrets.json
+credentials.json
+
+# ------------------------------------------------------------------------------
+# 2. Local Databases & File Storage
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+watchtower.db
+backend/watchtower.db
+storage/
+backend/storage/
+uploads/
+backend/uploads/
+*.sql
+*.dump
+
+# ------------------------------------------------------------------------------
+# 3. Python Virtual Environments, Bytecode & Testing
+# ------------------------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+develop-eggs/
+eggs/
+*.egg-info/
+parts/
+var/
+wheels/
+pip-wheel-metadata/
+
+# ------------------------------------------------------------------------------
+# 4. Node.js, Frontend Build Artifacts & Dependencies
+# ------------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+frontend/dist-ssr/
+.npm
+*.local
+
+# ------------------------------------------------------------------------------
+# 5. Logs & Temporary Files
+# ------------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+scratch/
+tmp/
+temp/
+
+# ------------------------------------------------------------------------------
+# 6. IDEs & Operating System Artifacts
+# ------------------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+ehthumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
