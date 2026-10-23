@@ -1,4 +1,7 @@
-const BASE_URL = '/api/v1';
+// Backend URL configuration - defaults to Render deployment URL
+const RAW_URL = import.meta.env.VITE_API_URL || 'https://aicte-watchtower.onrender.com';
+const CLEAN_URL = RAW_URL.replace(/\/+$/, '');
+const BASE_URL = CLEAN_URL.endsWith('/api/v1') ? CLEAN_URL : `${CLEAN_URL}/api/v1`;
 
 export class ApiError extends Error {
   constructor(status, code, message, details = {}) {
@@ -22,7 +25,8 @@ async function request(endpoint, options = {}) {
     delete headers['Content-Type'];
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const response = await fetch(`${BASE_URL}${cleanEndpoint}`, {
     ...options,
     headers
   });
