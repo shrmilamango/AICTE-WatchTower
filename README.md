@@ -57,7 +57,7 @@ All demo accounts use password: `Password@123` (or use the **1-click Role Select
 | **INSTITUTION** | `college@demo.aicte.gov.in` | Delhi Institute of Technology [DEMO DATA] |
 | **SCRUTINY_OFFICER** | `scrutiny@demo.aicte.gov.in` | Dr. A. K. Sharma (North Region Scrutiny Officer) |
 | **EVC_COORDINATOR** | `evc@demo.aicte.gov.in` | Er. Rajesh Verma (Regional EVC Coordinator) |
-| **COMMITTEE_MEMBER** | `committee@demo.aicte.gov.in` | Prof. M. S. Swaminathan (SAC/SHC Member) |
+| **COMMITTEE_MEMBER** | `committee@demo.aicte.gov.in` | Prof. R. K. Menon (SAC Member) [DEMO DATA] |
 | **AUTHORISED_OFFICIAL** | `official@demo.aicte.gov.in` | Dr. Rekha Gupta (Regional Officer & Authorised Official) |
 | **ADMIN** | `admin@demo.aicte.gov.in` | System Administrator (Ruleset & Template Editor) |
 | **AUDITOR** | `auditor@demo.aicte.gov.in` | Chief Compliance Auditor (Read-only Oversight) |

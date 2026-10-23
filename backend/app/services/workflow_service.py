@@ -199,14 +199,14 @@ class WorkflowService:
         ).order_by(ApplicationStageHistory.entered_at.asc()).all()
         
         for h in history:
-            owner = db.query(User).filter(User.id == h.owner_id).first() if h.owner_id else None
+            actor = db.query(User).filter(User.id == h.actor_id).first() if h.actor_id else (db.query(User).filter(User.id == h.owner_id).first() if h.owner_id else None)
             items.append(TimelineItem(
                 id=h.id,
                 type="STAGE",
                 title=f"Stage: {h.stage_key}",
                 description=h.outcome or f"Entered {h.stage_key} stage",
-                actor_name=owner.full_name if owner else "System Workflow",
-                actor_role=owner.role if owner else "SYSTEM",
+                actor_name=actor.full_name if actor else "System Workflow",
+                actor_role=actor.role if actor else "SYSTEM",
                 timestamp=h.entered_at,
                 metadata={"due_at": str(h.due_at) if h.due_at else None, "completed_at": str(h.completed_at) if h.completed_at else None}
             ))

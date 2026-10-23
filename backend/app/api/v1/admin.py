@@ -138,9 +138,11 @@ def trigger_seed_demo(
 @router.post("/admin/scheduler/run-now")
 def run_scheduler_now(
     req: SchedulerRunRequest = SchedulerRunRequest(),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.AUTHORISED_OFFICIAL])),
+    current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
     """Rule 4.10: Admin-only 'Run scheduler now' button with optional simulated date."""
+    if settings.APP_ENV != "demo":
+        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Run Scheduler Now is only available in demo environment"})
     stats = AlertService.run_scheduler_checks(db, simulated_now=req.simulated_date, actor=current_user)
     return {"status": "SUCCESS", "results": stats}

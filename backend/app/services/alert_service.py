@@ -66,12 +66,44 @@ class AlertService:
             "reminders_dispatched": 0
         }
 
-        # 1. Check Task Deadlines and Reminders
-        open_tasks = db.query(Task).filter(Task.status.in_(["OPEN", "OVERDUE"])).all()
+        # Read dynamic rules from escalation_rules table
+        esc_rules = db.query(EscalationRule).filter(EscalationRule.active == True).all()
+        ladder = {}
+        for r in esc_rules:
+            if r.target_type not in ladder:
+                ladder[r.target_type] = {}
+            ladder[r.target_type][r.level] = r
+
+        # Dynamic rules for TASK
+        t_l1 = ladder.get("TASK", {}).get(1)
+        t_l2 = ladder.get("TASK", {}).get(2)
+        task_l1_days = t_l1.after_overdue_days if t_l1 else 2
+        task_l1_role = t_l1.escalate_to_role if t_l1 else UserRole.AUTHORISED_OFFICIAL
+        task_l2_days = t_l2.after_overdue_days if t_l2 else 5
+        task_l2_role = t_l2.escalate_to_role if t_l2 else UserRole.AUTHORISED_OFFICIAL
+
+        # Dynamic rules for UNDERTAKING
+        u_l1 = ladder.get("UNDERTAKING", {}).get(1)
+        u_l2 = ladder.get("UNDERTAKING", {}).get(2)
+        und_l1_days = u_l1.after_overdue_days if u_l1 else 2
+        und_l1_role = u_l1.escalate_to_role if u_l1 else UserRole.AUTHORISED_OFFICIAL
+        und_l2_days = u_l2.after_overdue_days if u_l2 else 5
+        und_l2_role = u_l2.escalate_to_role if u_l2 else UserRole.AUTHORISED_OFFICIAL
+
+        # Dynamic rules for DOCUMENT
+        d_l1 = ladder.get("DOCUMENT", {}).get(1)
+        d_l2 = ladder.get("DOCUMENT", {}).get(2)
+        doc_l1_days = d_l1.after_overdue_days if d_l1 else 2
+        doc_l1_role = d_l1.escalate_to_role if d_l1 else UserRole.AUTHORISED_OFFICIAL
+        doc_l2_days = d_l2.after_overdue_days if d_l2 else 5
+        doc_l2_role = d_l2.escalate_to_role if d_l2 else UserRole.AUTHORISED_OFFICIAL
+
+        # 1. Check Task Deadlines and Escalations
+        open_tasks = db.query(Task).filter(Task.status.in_(["OPEN", "OVERDUE", "ESCALATED"])).all()
         for task in open_tasks:
             # Overdue check
             if task.due_at and task.due_at < now:
-                if task.status != "OVERDUE":
+                if task.status == "OPEN":
                     task.status = "OVERDUE"
                     stats["tasks_overdue"] += 1
                     if task.assigned_to:
@@ -86,70 +118,113 @@ class AlertService:
                             dedupe_key=f"OVERDUE_TASK:{task.id}:{date_str}"
                         )
 
-            # Escalation check
+            # Escalation check (stop when resolved)
             days_overdue = (now - task.due_at).days if task.due_at and task.due_at < now else 0
-            if days_overdue >= 5 and task.escalation_level < 2:
+            if days_overdue >= task_l2_days and task.escalation_level < 2:
                 task.status = "ESCALATED"
                 task.escalation_level = 2
                 stats["tasks_escalated"] += 1
-                admin_user = db.query(User).filter(User.role == UserRole.ADMIN).first()
-                if admin_user:
+                target_user = db.query(User).filter(User.role == task_l2_role).first()
+                if target_user:
                     AlertService.send_notification(
                         db,
-                        user_id=admin_user.id,
+                        user_id=target_user.id,
                         n_type="ESCALATED",
                         subject=f"ESCALATION LEVEL 2: Application Task {task.id}",
-                        body=f"Task {task.type} has been overdue by {days_overdue} days and is escalated to System Administration.",
+                        body=f"Task {task.type} has been overdue by {days_overdue} days and is escalated to {task_l2_role}.",
                         related_type="TASK",
                         related_id=task.id,
-                        dedupe_key=f"ESCALATION_L2:{task.id}:{date_str}"
+                        dedupe_key=f"ESCALATION_L2:{task.id}"
                     )
-            elif days_overdue >= 2 and task.escalation_level < 1:
+            elif days_overdue >= task_l1_days and task.escalation_level < 1:
                 task.status = "ESCALATED"
                 task.escalation_level = 1
                 stats["tasks_escalated"] += 1
-                official_user = db.query(User).filter(User.role == UserRole.AUTHORISED_OFFICIAL).first()
-                if official_user:
+                target_user = db.query(User).filter(User.role == task_l1_role).first()
+                if target_user:
                     AlertService.send_notification(
                         db,
-                        user_id=official_user.id,
+                        user_id=target_user.id,
                         n_type="ESCALATED",
                         subject=f"ESCALATION LEVEL 1: Application Task {task.id}",
-                        body=f"Task {task.type} is overdue by {days_overdue} days and is escalated to Regional Authorised Official.",
+                        body=f"Task {task.type} is overdue by {days_overdue} days and is escalated to {task_l1_role}.",
                         related_type="TASK",
                         related_id=task.id,
-                        dedupe_key=f"ESCALATION_L1:{task.id}:{date_str}"
+                        dedupe_key=f"ESCALATION_L1:{task.id}"
                     )
 
-        # 2. Check Undertaking Deadlines
-        pending_unds = db.query(Undertaking).filter(Undertaking.status.in_(["PENDING", "SUBMITTED"])).all()
+        # 2. Check Undertaking Deadlines and Escalations
+        pending_unds = db.query(Undertaking).filter(Undertaking.status.in_(["PENDING", "OVERDUE", "SUBMITTED"])).all()
         for und in pending_unds:
-            if und.due_at and und.due_at < now and und.status != "VERIFIED":
-                und.status = "OVERDUE"
-                stats["undertakings_overdue"] += 1
-                inst_users = db.query(User).filter(User.institution_id == und.institution_id).all()
-                for u in inst_users:
-                    AlertService.send_notification(
-                        db,
-                        user_id=u.id,
-                        n_type="UNDERTAKING_OVERDUE",
-                        subject=f"COMPLIANCE OVERDUE: {und.title}",
-                        body=f"Undertaking condition '{und.title}' was due on {und.due_at.strftime('%Y-%m-%d')} and has lapsed.",
-                        related_type="UNDERTAKING",
-                        related_id=und.id,
-                        dedupe_key=f"UND_OVERDUE:{und.id}:{date_str}"
-                    )
+            if und.due_at and und.due_at < now and und.status not in ["VERIFIED", "COMPLETED"]:
+                if und.status not in ["OVERDUE", "SUBMITTED"]:
+                    und.status = "OVERDUE"
+                    stats["undertakings_overdue"] += 1
+                days_overdue = (now - und.due_at).days
+                if days_overdue >= und_l2_days:
+                    target_user = db.query(User).filter(User.role == und_l2_role).first()
+                    if target_user:
+                        AlertService.send_notification(
+                            db,
+                            user_id=target_user.id,
+                            n_type="ESCALATED",
+                            subject=f"ESCALATION LEVEL 2: Undertaking Overdue - {und.title}",
+                            body=f"Undertaking '{und.title}' is overdue by {days_overdue} days and escalated to {und_l2_role}.",
+                            related_type="UNDERTAKING",
+                            related_id=und.id,
+                            dedupe_key=f"ESCALATION_UND_L2:{und.id}"
+                        )
+                elif days_overdue >= und_l1_days:
+                    target_user = db.query(User).filter(User.role == und_l1_role).first()
+                    if target_user:
+                        AlertService.send_notification(
+                            db,
+                            user_id=target_user.id,
+                            n_type="ESCALATED",
+                            subject=f"ESCALATION LEVEL 1: Undertaking Overdue - {und.title}",
+                            body=f"Undertaking '{und.title}' is overdue by {days_overdue} days and escalated to {und_l1_role}.",
+                            related_type="UNDERTAKING",
+                            related_id=und.id,
+                            dedupe_key=f"ESCALATION_UND_L1:{und.id}"
+                        )
 
-        # 3. Check Document Expiry
+        # 3. Check Document Expiry and Escalations
         docs = db.query(Document).filter(
             Document.valid_until.is_not(None),
-            Document.status.in_(["VALID", "EXPIRING"])
+            Document.status.in_(["VALID", "EXPIRING", "EXPIRED"])
         ).all()
         for doc in docs:
             days_left = (doc.valid_until - now).days
             if days_left <= 0:
                 doc.status = "EXPIRED"
                 stats["documents_expiring"] += 1
+                days_expired = abs(days_left)
+                if days_expired >= doc_l2_days:
+                    target_user = db.query(User).filter(User.role == doc_l2_role).first()
+                    if target_user:
+                        AlertService.send_notification(
+                            db,
+                            user_id=target_user.id,
+                            n_type="ESCALATED",
+                            subject=f"ESCALATION LEVEL 2: Expired Compliance Document - {doc.doc_type}",
+                            body=f"Compliance document '{doc.doc_type}' ({doc.file_name}) has been expired for {days_expired} days. Escalated to {doc_l2_role}.",
+                            related_type="DOCUMENT",
+                            related_id=doc.id,
+                            dedupe_key=f"ESCALATION_DOC_L2:{doc.id}"
+                        )
+                elif days_expired >= doc_l1_days:
+                    target_user = db.query(User).filter(User.role == doc_l1_role).first()
+                    if target_user:
+                        AlertService.send_notification(
+                            db,
+                            user_id=target_user.id,
+                            n_type="ESCALATED",
+                            subject=f"ESCALATION LEVEL 1: Expired Compliance Document - {doc.doc_type}",
+                            body=f"Compliance document '{doc.doc_type}' ({doc.file_name}) has been expired for {days_expired} days. Escalated to {doc_l1_role}.",
+                            related_type="DOCUMENT",
+                            related_id=doc.id,
+                            dedupe_key=f"ESCALATION_DOC_L1:{doc.id}"
+                        )
             elif days_left <= 30:
                 doc.status = "EXPIRING"
                 stats["documents_expiring"] += 1

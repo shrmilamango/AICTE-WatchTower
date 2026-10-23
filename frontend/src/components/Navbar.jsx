@@ -141,7 +141,7 @@ export const Navbar = () => {
       {/* Actions & Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         {/* Presentation Trigger: Run Scheduler Now */}
-        {(isAdmin || isOfficial) && (
+        {isAdmin && ((import.meta.env.VITE_APP_ENV || 'demo') === 'demo') && (
           <button
             onClick={handleRunSchedulerNow}
             disabled={runningScheduler}

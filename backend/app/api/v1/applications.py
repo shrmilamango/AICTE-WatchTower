@@ -13,7 +13,7 @@ from app.schemas.workflow import (
     ApplicationResponse,
     TimelineItem
 )
-from app.schemas.scrutiny import ScrutinyReviewCreate, DeficienciesRespondRequest
+from app.schemas.scrutiny import ScrutinyReviewCreate, DeficienciesRespondRequest, DeficiencyResponse
 from app.schemas.evc import EvcScheduleRequest
 from app.schemas.committee import CommitteeAssignRequest
 from app.schemas.decision import DecisionCreate
@@ -70,7 +70,10 @@ def list_applications(
     # Rule 1.3: Institution isolation
     if current_user.role == UserRole.INSTITUTION:
         query = query.filter(Application.institution_id == current_user.institution_id)
-    elif region:
+    elif current_user.role in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER]:
+        if current_user.region and current_user.region.upper() not in ["ALL", "ALL REGIONS"]:
+            query = query.join(Institution, Application.institution_id == Institution.id).filter(Institution.region == current_user.region)
+    elif region and region.upper() not in ["ALL", "ALL REGIONS"]:
         query = query.join(Institution, Application.institution_id == Institution.id).filter(Institution.region == region)
 
     if status:
@@ -103,6 +106,11 @@ def get_application(
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Application not found"})
     if current_user.role == UserRole.INSTITUTION and app.institution_id != current_user.institution_id:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Application not found"})
+    if current_user.role in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER]:
+        if current_user.region and current_user.region.upper() not in ["ALL", "ALL REGIONS"]:
+            inst = db.query(Institution).filter(Institution.id == app.institution_id).first()
+            if inst and inst.region != current_user.region:
+                raise HTTPException(status_code=403, detail={"code": "REGION_RESTRICTED", "message": f"Access restricted to {current_user.region} region"})
     return enrich_app_response(app, db)
 
 @router.put("/{id}", response_model=ApplicationResponse)
@@ -148,6 +156,17 @@ def submit_scrutiny(
 ):
     rev = ScrutinyService.review_application(db, id, req, current_user)
     return {"status": "SUCCESS", "review_id": rev.id, "outcome": rev.outcome}
+
+@router.get("/{id}/deficiencies", response_model=List[DeficiencyResponse])
+def get_deficiencies(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    app = db.query(Application).filter(Application.id == id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Application not found"})
+    return ScrutinyService.get_deficiencies(db, id)
 
 @router.post("/{id}/deficiencies/respond")
 def respond_deficiencies(

@@ -83,12 +83,12 @@ class WorkflowEngine:
         Rule 2B.2: Automatic assignment by region, then lowest open task workload.
         """
         query = db.query(User).filter(User.role == role, User.is_active == True)
-        if region:
+        if region and region.upper() not in ["ALL", "ALL REGIONS"]:
             regional_users = query.filter(User.region == region).all()
             if regional_users:
                 candidates = regional_users
             else:
-                candidates = query.all()
+                candidates = query.all() if role not in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER] else []
         else:
             candidates = query.all()
 
@@ -190,7 +190,8 @@ class WorkflowEngine:
             stage_key=to_stage_key,
             entered_at=now,
             due_at=due_at,
-            owner_id=new_owner_id
+            owner_id=new_owner_id,
+            actor_id=actor.id if actor else None
         )
         db.add(history)
 

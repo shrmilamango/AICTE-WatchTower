@@ -193,7 +193,7 @@ export default function App() {
           <Route
             path="/audit"
             element={
-              <ProtectedRoute allowedRoles={['ADMIN', 'AUDITOR', 'AUTHORISED_OFFICIAL']}>
+              <ProtectedRoute allowedRoles={['ADMIN', 'AUDITOR']}>
                 <AppLayout>
                   <AuditTrail />
                 </AppLayout>

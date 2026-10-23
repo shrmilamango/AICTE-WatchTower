@@ -44,7 +44,18 @@ def list_evc_visits(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    visits = EvcService.get_all(db, status_filter=status)
+    query = db.query(EvcVisit)
+    if status:
+        query = query.filter(EvcVisit.status == status)
+    if current_user.role == UserRole.INSTITUTION:
+        query = query.join(Application, EvcVisit.application_id == Application.id)\
+                     .filter(Application.institution_id == current_user.institution_id)
+    elif current_user.role in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER]:
+        if current_user.region and current_user.region.upper() not in ["ALL", "ALL REGIONS"]:
+            query = query.join(Application, EvcVisit.application_id == Application.id)\
+                         .join(Institution, Application.institution_id == Institution.id)\
+                         .filter(Institution.region == current_user.region)
+    visits = query.order_by(EvcVisit.created_at.desc()).all()
     return [enrich_evc_response(v, db) for v in visits]
 
 @router.patch("/{id}", response_model=EvcResponse)

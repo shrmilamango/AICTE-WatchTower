@@ -286,7 +286,7 @@ export const Dashboard = () => {
             style={{ padding: '20px', cursor: 'pointer', borderLeft: '4px solid #0891b2' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>EXPIRING CERTIFICATES</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>EXPIRING / EXPIRED DOCUMENTS</span>
               <FileWarning size={18} color="#0891b2" />
             </div>
             <div style={{ fontSize: '2.1rem', fontWeight: 800, margin: '8px 0 4px', color: '#0e7490' }}>

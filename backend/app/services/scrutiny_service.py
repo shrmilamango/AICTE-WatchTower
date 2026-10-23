@@ -9,8 +9,19 @@ from app.models.scrutiny import ScrutinyReview, Deficiency
 from app.models.user import User, UserRole
 from app.workflow.engine import WorkflowEngine
 from app.schemas.scrutiny import ScrutinyReviewCreate, DeficienciesRespondRequest
+from app.services.alert_service import AlertService
 
 class ScrutinyService:
+    @staticmethod
+    def get_deficiencies(db: Session, application_id: str) -> List[Deficiency]:
+        reviews = db.query(ScrutinyReview).filter(
+            ScrutinyReview.application_id == application_id
+        ).order_by(ScrutinyReview.round_no.desc()).all()
+        if not reviews:
+            return []
+        rev_ids = [r.id for r in reviews]
+        return db.query(Deficiency).filter(Deficiency.review_id.in_(rev_ids)).order_by(Deficiency.created_at.asc()).all()
+
     @staticmethod
     def review_application(
         db: Session,
@@ -151,11 +162,24 @@ class ScrutinyService:
             force_owner_id=last_review.reviewer_id
         )
 
+        # Send notification to the same scrutiny officer
+        AlertService.send_notification(
+            db=db,
+            user_id=last_review.reviewer_id,
+            n_type="DEFICIENCIES_RESUBMITTED",
+            subject=f"Deficiencies Resubmitted: {app.app_no}",
+            body=f"Institution has responded to all deficiencies for {app.app_no}. Assigned for Round {last_review.round_no + 1} scrutiny review.",
+            related_type="APPLICATION",
+            related_id=app.app_no,
+            channel="IN_APP"
+        )
+
         log_audit(
             db=db,
             action="DEFICIENCY_RESUBMISSION",
             entity_type="APPLICATION",
             entity_id=app.id,
-            actor_id=institution_user.id
+            actor_id=institution_user.id,
+            after_state={"status": "UNDER_SCRUTINY", "round": last_review.round_no + 1, "reviewer_id": last_review.reviewer_id}
         )
         return app

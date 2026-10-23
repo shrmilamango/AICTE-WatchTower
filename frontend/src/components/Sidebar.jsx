@@ -25,7 +25,7 @@ export const Sidebar = () => {
     { label: 'Committee Reviews', path: '/committee', icon: Users, roles: ['COMMITTEE_MEMBER', 'ADMIN', 'AUTHORISED_OFFICIAL', 'AUDITOR'] },
     { label: 'Compliance & Undertakings', path: '/compliance', icon: ShieldCheck, roles: 'ALL' },
     { label: 'Risk Oversight (0-100)', path: '/risk', icon: AlertTriangle, hideFor: ['INSTITUTION'] },
-    { label: 'Tamper Audit Trail', path: '/audit', icon: History, roles: ['ADMIN', 'AUDITOR', 'AUTHORISED_OFFICIAL'] },
+    { label: 'Tamper Audit Trail', path: '/audit', icon: History, roles: ['ADMIN', 'AUDITOR'] },
     { label: 'Rules & Configuration', path: '/admin/config', icon: Sliders, roles: ['ADMIN'] }
   ];
 

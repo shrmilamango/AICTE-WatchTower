@@ -7,7 +7,7 @@ const DEMO_PRESETS = [
   { role: 'INSTITUTION', label: 'College Representative', email: 'college@demo.aicte.gov.in', desc: 'Delhi Inst of Tech' },
   { role: 'SCRUTINY_OFFICER', label: 'Scrutiny Officer', email: 'scrutiny@demo.aicte.gov.in', desc: 'Dr. A. K. Sharma' },
   { role: 'EVC_COORDINATOR', label: 'EVC Coordinator', email: 'evc@demo.aicte.gov.in', desc: 'Er. Rajesh Verma' },
-  { role: 'COMMITTEE_MEMBER', label: 'SAC Committee Member', email: 'committee@demo.aicte.gov.in', desc: 'Prof. Swaminathan' },
+  { role: 'COMMITTEE_MEMBER', label: 'SAC Committee Member', email: 'committee@demo.aicte.gov.in', desc: 'Prof. R. K. Menon [DEMO DATA]' },
   { role: 'AUTHORISED_OFFICIAL', label: 'Authorised Official', email: 'official@demo.aicte.gov.in', desc: 'Dr. Rekha Gupta' },
   { role: 'ADMIN', label: 'System Admin', email: 'admin@demo.aicte.gov.in', desc: 'Full System Control' },
   { role: 'AUDITOR', label: 'Chief Auditor', email: 'auditor@demo.aicte.gov.in', desc: 'Read-only Oversight' },

@@ -60,6 +60,15 @@ def get_all_tasks(
     db: Session = Depends(get_db)
 ):
     query = db.query(Task)
+    if current_user.role == UserRole.INSTITUTION:
+        query = query.join(Application, Task.application_id == Application.id)\
+                     .filter(Application.institution_id == current_user.institution_id)
+    elif current_user.role in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER]:
+        if current_user.region and current_user.region.upper() not in ["ALL", "ALL REGIONS"]:
+            query = query.join(Application, Task.application_id == Application.id)\
+                         .join(Institution, Application.institution_id == Institution.id)\
+                         .filter(Institution.region == current_user.region)
+
     if status:
         query = query.filter(Task.status == status)
     if role:

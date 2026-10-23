@@ -67,18 +67,25 @@ export const ApplicationDetail = () => {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadValidUntil, setUploadValidUntil] = useState('');
 
+  // Deficiency response state
+  const [deficiencies, setDeficiencies] = useState([]);
+  const [deficiencyResponses, setDeficiencyResponses] = useState({});
+  const [submittingDeficiencies, setSubmittingDeficiencies] = useState(false);
+
   const loadAllData = async () => {
     setLoading(true);
     setActionError(null);
     try {
-      const [appData, timeData, docData] = await Promise.all([
+      const [appData, timeData, docData, defData] = await Promise.all([
         api.get(`/applications/${id}`),
         api.get(`/applications/${id}/timeline`),
-        api.get(`/documents?application_id=${id}`)
+        api.get(`/documents?application_id=${id}`),
+        api.get(`/applications/${id}/deficiencies`).catch(() => [])
       ]);
       setApp(appData);
       setTimeline(timeData || []);
       setDocuments(docData || []);
+      setDeficiencies(defData || []);
       setOrderRef(`AICTE/NWRO/2026/ORD-${appData.app_no?.split('-').pop() || '101'}`);
     } catch (err) {
       setActionError(err.message || 'Failed to load case');
@@ -169,6 +176,57 @@ export const ApplicationDetail = () => {
       loadAllData();
     } catch (err) {
       setActionError(err.message || 'Decision failed');
+    }
+  };
+
+  const handleResubmitDeficiencies = async (e) => {
+    e.preventDefault();
+    const openDefs = deficiencies.filter(d => d.status === 'OPEN');
+    if (openDefs.length === 0) {
+      setActionError('No open deficiencies to respond to.');
+      return;
+    }
+
+    // Block resubmit until every item is answered
+    const unanswered = openDefs.find(d => !deficiencyResponses[d.id]?.text || !deficiencyResponses[d.id].text.trim());
+    if (unanswered) {
+      setActionError(`Please provide a response for "${unanswered.item}" before resubmitting.`);
+      return;
+    }
+
+    setSubmittingDeficiencies(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      // Upload any attached optional evidence files
+      for (const d of openDefs) {
+        if (deficiencyResponses[d.id]?.file) {
+          const formData = new FormData();
+          formData.append('file', deficiencyResponses[d.id].file);
+          formData.append('doc_type', 'DEFICIENCY_EVIDENCE');
+          formData.append('application_id', id);
+          if (app?.institution_id) formData.append('institution_id', app.institution_id);
+          await api.upload('/documents', formData).catch(err => {
+            console.warn('Evidence upload warning:', err);
+          });
+        }
+      }
+
+      const payload = {
+        responses: openDefs.map(d => ({
+          deficiency_id: d.id,
+          response_text: deficiencyResponses[d.id].text.trim()
+        }))
+      };
+
+      await api.post(`/applications/${id}/deficiencies/respond`, payload);
+      setActionSuccess('Deficiency responses successfully submitted! Application transitioned to UNDER_SCRUTINY and re-routed to Scrutiny Officer.');
+      loadAllData();
+    } catch (err) {
+      setActionError(err.message || 'Failed to submit deficiency response');
+    } finally {
+      setSubmittingDeficiencies(false);
     }
   };
 
@@ -278,6 +336,168 @@ export const ApplicationDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* DEFICIENCIES RESPONSE SECTION (for Institution when DEFICIENCY_RAISED) */}
+      {(app.status === 'DEFICIENCY_RAISED' || deficiencies.length > 0) && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '24px',
+            borderLeft: '5px solid #d97706',
+            background: app.status === 'DEFICIENCY_RAISED' ? '#fffdf7' : 'white'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <AlertTriangle size={22} color="#d97706" />
+              <div>
+                <h3 style={{ fontSize: '1.15rem', color: '#92400e', margin: 0 }}>
+                  Respond to Deficiencies
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  {app.status === 'DEFICIENCY_RAISED' && isInstitution
+                    ? 'Official scrutiny review raised the following deficiencies. All items must be answered before resubmitting.'
+                    : 'Deficiency items identified during technical scrutiny.'}
+                </p>
+              </div>
+            </div>
+            {app.status === 'DEFICIENCY_RAISED' && (
+              <span className="badge badge-warning">Awaiting College Clarification</span>
+            )}
+          </div>
+
+          <form onSubmit={handleResubmitDeficiencies} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {deficiencies.map((def, idx) => {
+              const isResolved = def.status === 'RESOLVED';
+              return (
+                <div
+                  key={def.id}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '16px 20px',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        background: '#fef3c7',
+                        color: '#92400e',
+                        fontWeight: 700,
+                        fontSize: '0.75rem',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-sm)'
+                      }}>
+                        Item {idx + 1}
+                      </span>
+                      <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>{def.item}</strong>
+                    </div>
+                    <span className={`badge ${isResolved ? 'badge-success' : def.is_overdue ? 'badge-danger' : 'badge-warning'}`}>
+                      {def.status}
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '12px' }}>
+                    {def.description}
+                  </p>
+
+                  {isResolved ? (
+                    <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+                      <span style={{ fontWeight: 600, color: '#059669' }}>Submitted Response: </span>
+                      <span style={{ color: '#334155' }}>{def.response_text}</span>
+                    </div>
+                  ) : app.status === 'DEFICIENCY_RAISED' && isInstitution ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div>
+                        <label className="label" style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                          Your Clarification / Corrective Action <span style={{ color: '#dc2626' }}>*</span>
+                        </label>
+                        <textarea
+                          className="input"
+                          rows={3}
+                          placeholder="Detail rectifications made, compliance norms met, or clarifications..."
+                          value={deficiencyResponses[def.id]?.text || ''}
+                          onChange={(e) => setDeficiencyResponses({
+                            ...deficiencyResponses,
+                            [def.id]: {
+                              ...(deficiencyResponses[def.id] || {}),
+                              text: e.target.value
+                            }
+                          })}
+                          required
+                          style={{ width: '100%', resize: 'vertical' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Supporting Evidence Document (Optional PDF / Image)
+                        </label>
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const file = e.target.files[0] || null;
+                            setDeficiencyResponses({
+                              ...deficiencyResponses,
+                              [def.id]: {
+                                ...(deficiencyResponses[def.id] || {}),
+                                file
+                              }
+                            });
+                          }}
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        {deficiencyResponses[def.id]?.file && (
+                          <span style={{ fontSize: '0.75rem', color: '#059669', marginLeft: '10px' }}>
+                            Attached: {deficiencyResponses[def.id].file.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Awaiting college response.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {app.status === 'DEFICIENCY_RAISED' && isInstitution && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {!deficiencies.filter(d => d.status === 'OPEN').every(d => deficiencyResponses[d.id]?.text?.trim()) ? (
+                    <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                      ⚠️ All items must be answered before you can resubmit.
+                    </span>
+                  ) : (
+                    <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                      ✓ All deficiencies answered. Ready for resubmission.
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={
+                    submittingDeficiencies ||
+                    deficiencies.filter(d => d.status === 'OPEN').length === 0 ||
+                    !deficiencies.filter(d => d.status === 'OPEN').every(d => deficiencyResponses[d.id]?.text?.trim())
+                  }
+                  className="btn btn-primary"
+                  style={{ minWidth: '180px' }}
+                >
+                  <Send size={15} />
+                  {submittingDeficiencies ? 'Resubmitting...' : 'Resubmit Application'}
+                </button>
+              </div>
+            )}
+          </form>
+        </div>
+      )}
 
       {/* Grid: Form Data & Attached Documents */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '20px' }}>

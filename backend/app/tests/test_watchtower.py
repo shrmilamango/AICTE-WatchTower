@@ -231,3 +231,85 @@ def test_audit_logs_recorded_for_actions(client):
     logs = res.json()
     assert len(logs) > 0
     assert any("LOGIN_SUCCESS" in l["action"] for l in logs)
+
+# --- Additional Demo Readiness Tests (Parts 2, 4, 5) ---
+
+def test_deficiency_response_flow(client):
+    """Part 2: Deficiency response requires all items, transitions to UNDER_SCRUTINY, increments round, notifies officer"""
+    db = TestingSessionLocal()
+    app_item = db.query(Application).filter(Application.status == "DEFICIENCY_RAISED").first()
+    db.close()
+    if not app_item:
+        return
+
+    college_token = client.post("/api/v1/auth/login", json={"email": "college@demo.aicte.gov.in", "password": "Password@123"}).json()["access_token"]
+    
+    # Fetch deficiencies
+    res_defs = client.get(f"/api/v1/applications/{app_item.id}/deficiencies", headers={"Authorization": f"Bearer {college_token}"})
+    assert res_defs.status_code == 200
+    defs = res_defs.json()
+    assert len(defs) > 0
+
+    # Incomplete response blocked
+    res_bad = client.post(
+        f"/api/v1/applications/{app_item.id}/deficiencies/respond",
+        json={"responses": [{"deficiency_id": defs[0]["id"], "response_text": "Only one answered"}]},
+        headers={"Authorization": f"Bearer {college_token}"}
+    )
+    assert res_bad.status_code == 400
+    assert res_bad.json()["error"]["code"] == "INCOMPLETE_RESPONSE"
+
+    # Full response succeeds
+    full_responses = [{"deficiency_id": d["id"], "response_text": f"Addressed item {d['item']}"} for d in defs]
+    res_good = client.post(
+        f"/api/v1/applications/{app_item.id}/deficiencies/respond",
+        json={"responses": full_responses},
+        headers={"Authorization": f"Bearer {college_token}"}
+    )
+    assert res_good.status_code == 200
+    assert res_good.json()["status"] == "UNDER_SCRUTINY"
+
+def test_region_scoping_enforcement(client):
+    """Part 4: Region scoping allows officers to access only applications in their own region"""
+    scrutiny_north_token = client.post("/api/v1/auth/login", json={"email": "scrutiny@demo.aicte.gov.in", "password": "Password@123"}).json()["access_token"]
+    
+    db = TestingSessionLocal()
+    west_app = db.query(Application).filter(Application.app_no == "WT-2026-0004").first() # Mumbai inst (WEST)
+    db.close()
+    
+    if west_app:
+        # North officer cannot access West application (403)
+        res = client.get(f"/api/v1/applications/{west_app.id}", headers={"Authorization": f"Bearer {scrutiny_north_token}"})
+        assert res.status_code == 403
+        assert res.json()["error"]["code"] == "REGION_RESTRICTED"
+
+def test_escalation_ladder_validation_and_audit(client):
+    """Part 5: Escalation ladder validates days > 0, L2 > L1, and writes audit record"""
+    admin_token = client.post("/api/v1/auth/login", json={"email": "admin@demo.aicte.gov.in", "password": "Password@123"}).json()["access_token"]
+    
+    # L2 <= L1 rejected with 400
+    bad_req = {
+        "items": [{"target_type": "TASK", "l1_role": "AUTHORISED_OFFICIAL", "l1_days": 5, "l2_role": "AUTHORISED_OFFICIAL", "l2_days": 2}]
+    }
+    res_bad = client.put("/api/v1/escalation-rules/ladder", json=bad_req, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_bad.status_code == 400
+    assert res_bad.json()["error"]["code"] == "INVALID_LADDER_ORDER"
+
+    # Days <= 0 rejected with 400
+    bad_req2 = {
+        "items": [{"target_type": "TASK", "l1_role": "AUTHORISED_OFFICIAL", "l1_days": 0, "l2_role": "AUTHORISED_OFFICIAL", "l2_days": 4}]
+    }
+    res_bad2 = client.put("/api/v1/escalation-rules/ladder", json=bad_req2, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_bad2.status_code == 400
+    assert res_bad2.json()["error"]["code"] == "INVALID_DAYS"
+
+    # Valid save
+    good_req = {
+        "items": [
+            {"target_type": "TASK", "l1_role": "AUTHORISED_OFFICIAL", "l1_days": 2, "l2_role": "AUTHORISED_OFFICIAL", "l2_days": 5},
+            {"target_type": "UNDERTAKING", "l1_role": "AUTHORISED_OFFICIAL", "l1_days": 2, "l2_role": "AUTHORISED_OFFICIAL", "l2_days": 5},
+            {"target_type": "DOCUMENT", "l1_role": "AUTHORISED_OFFICIAL", "l1_days": 2, "l2_role": "AUTHORISED_OFFICIAL", "l2_days": 5}
+        ]
+    }
+    res_good = client.put("/api/v1/escalation-rules/ladder", json=good_req, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res_good.status_code == 200

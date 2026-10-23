@@ -42,20 +42,32 @@ def get_dashboard_summary(
         inst_approved = app_query.filter(Application.status.in_(["APPROVED", "APPROVED_WITH_CONDITIONS"])).count()
         inst_deficiencies = app_query.filter(Application.status == "DEFICIENCY_RAISED").count()
     else:
-        if region:
-            app_query = app_query.join(Institution, Application.institution_id == Institution.id).filter(Institution.region == region)
+        effective_region = None
+        if current_user.role in [UserRole.SCRUTINY_OFFICER, UserRole.EVC_COORDINATOR, UserRole.COMMITTEE_MEMBER]:
+            if current_user.region and current_user.region.upper() not in ["ALL", "ALL REGIONS"]:
+                effective_region = current_user.region
+        elif region and region.upper() not in ["ALL", "ALL REGIONS"]:
+            effective_region = region
+
+        if effective_region:
+            app_query = app_query.join(Institution, Application.institution_id == Institution.id).filter(Institution.region == effective_region)
+            doc_query = doc_query.join(Institution, Document.institution_id == Institution.id).filter(Institution.region == effective_region)
+            und_query = und_query.join(Institution, Undertaking.institution_id == Institution.id).filter(Institution.region == effective_region)
+            evc_query = evc_query.join(Application, EvcVisit.application_id == Application.id)\
+                                 .join(Institution, Application.institution_id == Institution.id)\
+                                 .filter(Institution.region == effective_region)
         
         # Officer personal tasks
         my_open = db.query(Task).filter(Task.assigned_to == current_user.id, Task.status == "OPEN").count()
         my_overdue = db.query(Task).filter(Task.assigned_to == current_user.id, Task.status.in_(["OVERDUE", "ESCALATED"])).count()
         
         # EVC coordinator metrics
-        evc_sched = db.query(EvcVisit).filter(EvcVisit.status == "SCHEDULED").count()
-        evc_rep_pending = db.query(EvcVisit).filter(EvcVisit.status == "COMPLETED").count()
+        evc_sched = evc_query.filter(EvcVisit.status == "SCHEDULED").count()
+        evc_rep_pending = evc_query.filter(EvcVisit.status == "COMPLETED").count()
         
         # Committee & deficiency metrics
-        committee_rev = db.query(Application).filter(Application.status == "COMMITTEE_REVIEW").count()
-        inst_deficiencies = db.query(Application).filter(Application.status == "DEFICIENCY_RAISED").count()
+        committee_rev = app_query.filter(Application.status == "COMMITTEE_REVIEW").count()
+        inst_deficiencies = app_query.filter(Application.status == "DEFICIENCY_RAISED").count()
 
     total_apps = app_query.count()
     under_scrutiny = app_query.filter(Application.status.in_(["UNDER_SCRUTINY", "RESUBMITTED"])).count()

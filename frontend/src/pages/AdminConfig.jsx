@@ -6,6 +6,11 @@ export const AdminConfig = () => {
   const [slaConfig, setSlaConfig] = useState(null);
   const [reminderConfig, setReminderConfig] = useState(null);
   const [escalationConfig, setEscalationConfig] = useState(null);
+  const [escalationLadder, setEscalationLadder] = useState({
+    TASK: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 },
+    UNDERTAKING: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 },
+    DOCUMENT: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 }
+  });
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -14,16 +19,37 @@ export const AdminConfig = () => {
   const loadConfigs = async () => {
     setLoading(true);
     try {
-      const [sla, rem, esc, tpl] = await Promise.all([
+      const [sla, rem, esc, tpl, escRules] = await Promise.all([
         api.get('/config/workflow_sla_days'),
         api.get('/config/reminder_offsets'),
         api.get('/config/escalation_thresholds'),
-        api.get('/workflow-templates')
+        api.get('/workflow-templates'),
+        api.get('/escalation-rules').catch(() => [])
       ]);
       setSlaConfig(sla.value || {});
       setReminderConfig(rem.value || {});
       setEscalationConfig(esc.value || {});
       setTemplates(tpl || []);
+
+      if (escRules && escRules.length > 0) {
+        const ladderState = {
+          TASK: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 },
+          UNDERTAKING: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 },
+          DOCUMENT: { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 }
+        };
+        escRules.forEach(r => {
+          if (ladderState[r.target_type]) {
+            if (r.level === 1) {
+              ladderState[r.target_type].l1_role = r.escalate_to_role;
+              ladderState[r.target_type].l1_days = r.after_overdue_days;
+            } else if (r.level === 2) {
+              ladderState[r.target_type].l2_role = r.escalate_to_role;
+              ladderState[r.target_type].l2_days = r.after_overdue_days;
+            }
+          }
+        });
+        setEscalationLadder(ladderState);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -58,6 +84,41 @@ export const AdminConfig = () => {
       setTimeout(() => setMsg(null), 4000);
     } catch (err) {
       alert(`Update failed: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEscalationLadder = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    try {
+      // Validate: days > 0, and Level 2 days > Level 1 days
+      for (const [type, item] of Object.entries(escalationLadder)) {
+        if (Number(item.l1_days) <= 0 || Number(item.l2_days) <= 0) {
+          throw new Error(`Overdue days must be greater than 0 for ${type}`);
+        }
+        if (Number(item.l2_days) <= Number(item.l1_days)) {
+          throw new Error(`Level 2 days (${item.l2_days}) must be strictly greater than Level 1 days (${item.l1_days}) for ${type}`);
+        }
+      }
+
+      const payload = {
+        items: Object.entries(escalationLadder).map(([target_type, data]) => ({
+          target_type,
+          l1_role: data.l1_role,
+          l1_days: Number(data.l1_days),
+          l2_role: data.l2_role,
+          l2_days: Number(data.l2_days)
+        }))
+      };
+
+      await api.put('/escalation-rules/ladder', payload);
+      setMsg('Escalation Ladder saved to escalation_rules table and logged to audit trail.');
+      setTimeout(() => setMsg(null), 4000);
+    } catch (err) {
+      alert(`Validation error: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -186,6 +247,146 @@ export const AdminConfig = () => {
           </form>
         </div>
 
+      </div>
+
+      {/* Escalation Ladder Card (TASK, UNDERTAKING, DOCUMENT) */}
+      <div className="glass-panel" style={{ padding: '24px', borderLeft: '4px solid #b45309' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h3 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a' }}>
+              <ShieldAlert size={18} color="#b45309" />
+              Escalation Ladder
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Configure 2-level hierarchical overdue escalation rules for Tasks, Undertakings, and Documents (saved in escalation_rules table).
+            </p>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: '#fef3c7', padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid #fde68a' }}>
+            Defaults: L1 &rarr; 2 days, L2 &rarr; 5 days
+          </span>
+        </div>
+
+        <form onSubmit={handleSaveEscalationLadder} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+            {['TASK', 'UNDERTAKING', 'DOCUMENT'].map((type) => {
+              const ladder = escalationLadder[type] || { l1_role: 'AUTHORISED_OFFICIAL', l1_days: 2, l2_role: 'AUTHORISED_OFFICIAL', l2_days: 5 };
+              const typeLabel = {
+                TASK: 'Application Tasks',
+                UNDERTAKING: 'Compliance Undertakings',
+                DOCUMENT: 'Compliance Documents'
+              }[type];
+
+              return (
+                <div
+                  key={type}
+                  style={{
+                    background: '#f8fafc',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid #e2e8f0',
+                    padding: '16px'
+                  }}
+                >
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '12px', color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{typeLabel}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{type}</span>
+                  </div>
+
+                  {/* Level 1 */}
+                  <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#b45309', marginBottom: '8px' }}>
+                      LEVEL 1 ESCALATION
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label className="label" style={{ fontSize: '0.7rem' }}>Escalate To Role</label>
+                        <select
+                          className="input-field"
+                          value={ladder.l1_role}
+                          onChange={(e) => setEscalationLadder({
+                            ...escalationLadder,
+                            [type]: { ...ladder, l1_role: e.target.value }
+                          })}
+                          style={{ fontSize: '0.75rem', padding: '6px' }}
+                        >
+                          <option value="AUTHORISED_OFFICIAL">AUTHORISED_OFFICIAL</option>
+                          <option value="ADMIN">ADMIN</option>
+                          <option value="AUDITOR">AUDITOR</option>
+                          <option value="SCRUTINY_OFFICER">SCRUTINY_OFFICER</option>
+                          <option value="EVC_COORDINATOR">EVC_COORDINATOR</option>
+                          <option value="COMMITTEE_MEMBER">COMMITTEE_MEMBER</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: '0.7rem' }}>After Overdue Days</label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          min="1"
+                          value={ladder.l1_days}
+                          onChange={(e) => setEscalationLadder({
+                            ...escalationLadder,
+                            [type]: { ...ladder, l1_days: Number(e.target.value) }
+                          })}
+                          style={{ fontSize: '0.75rem', padding: '6px', textAlign: 'center' }}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Level 2 */}
+                  <div style={{ background: '#ffffff', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626', marginBottom: '8px' }}>
+                      LEVEL 2 ESCALATION
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label className="label" style={{ fontSize: '0.7rem' }}>Escalate To Role</label>
+                        <select
+                          className="input-field"
+                          value={ladder.l2_role}
+                          onChange={(e) => setEscalationLadder({
+                            ...escalationLadder,
+                            [type]: { ...ladder, l2_role: e.target.value }
+                          })}
+                          style={{ fontSize: '0.75rem', padding: '6px' }}
+                        >
+                          <option value="AUTHORISED_OFFICIAL">AUTHORISED_OFFICIAL</option>
+                          <option value="ADMIN">ADMIN</option>
+                          <option value="AUDITOR">AUDITOR</option>
+                          <option value="SCRUTINY_OFFICER">SCRUTINY_OFFICER</option>
+                          <option value="EVC_COORDINATOR">EVC_COORDINATOR</option>
+                          <option value="COMMITTEE_MEMBER">COMMITTEE_MEMBER</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: '0.7rem' }}>After Overdue Days</label>
+                        <input
+                          type="number"
+                          className="input-field"
+                          min="2"
+                          value={ladder.l2_days}
+                          onChange={(e) => setEscalationLadder({
+                            ...escalationLadder,
+                            [type]: { ...ladder, l2_days: Number(e.target.value) }
+                          })}
+                          style={{ fontSize: '0.75rem', padding: '6px', textAlign: 'center' }}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              <Save size={14} /> Save Escalation Ladder Rules
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Active Workflow Template Stages (Rule 6.2) */}

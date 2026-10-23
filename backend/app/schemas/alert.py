@@ -49,6 +49,16 @@ class EscalationRuleUpdate(BaseModel):
     escalate_to_role: str
     active: Optional[bool] = None
 
+class EscalationLadderItem(BaseModel):
+    target_type: str # TASK, UNDERTAKING, DOCUMENT
+    l1_role: str = "AUTHORISED_OFFICIAL"
+    l1_days: int = 2
+    l2_role: str = "AUTHORISED_OFFICIAL"
+    l2_days: int = 5
+
+class EscalationLadderBatchRequest(BaseModel):
+    items: List[EscalationLadderItem]
+
 class RiskFactor(BaseModel):
     rule: str
     points: int

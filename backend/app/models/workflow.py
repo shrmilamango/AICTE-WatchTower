@@ -45,6 +45,7 @@ class ApplicationStageHistory(BaseModel):
     due_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     owner_id = Column(String(36), nullable=True)
+    actor_id = Column(String(36), nullable=True)
     outcome = Column(String(100), nullable=True)
 
 class Task(BaseModel):
